@@ -1,0 +1,68 @@
+.playground {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.playground h1 {
+  font-size: 2.25rem;
+  margin: 0;
+}
+
+.subtitle {
+  margin: 0;
+  color: #8b8b96;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.65rem 1.5rem;
+  cursor: pointer;
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.1);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.btn.success {
+  background: #16a34a;
+}
+
+.btn.error {
+  background: #dc2626;
+}
+
+.btn.info {
+  background: #2563eb;
+}
+
+.btn.promise {
+  background: #7c3aed;
+}
