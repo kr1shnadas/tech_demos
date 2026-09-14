@@ -1,9 +1,9 @@
-# Sonner playground
+# Sonner toasts
 
 One-screen playground for [Sonner](https://sonner.emilkowal.ski/) toasts:
 eight triggers covering default, success, error, warning, info, promise
-(resolves after ~1.5s), action (with Undo), and rich (title + description)
-toasts.
+(~1.5s, alternating success and failure so both paths are visible), action
+(with Undo), and rich (title + description) toasts.
 
 ## Run
 
@@ -31,6 +31,7 @@ buttons.
 
 - `src/main.tsx` — mounts `<Toaster />` + `<App />`
 - `src/App.tsx` — the single screen
-- `src/components/toast-playground.tsx` — the eight toast triggers
+- `src/components/toast-playground.tsx` — the eight toast triggers (Promise
+  alternates resolve/reject; each click is an independent promise)
 - `src/components/ui/button.tsx`, `src/components/ui/sonner.tsx` — shadcn components
 - `src/lib/utils.ts` — `cn()` helper

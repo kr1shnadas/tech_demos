@@ -5,6 +5,24 @@ import { Button } from "@/components/ui/button"
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// Alternates so the promise toast demonstrates both the resolve and the
+// reject path. Each click gets its own promise, so concurrent in-flight
+// clicks stay independent.
+let promiseClicks = 0
+
+function loadDemoData() {
+  const shouldFail = promiseClicks % 2 === 1
+  promiseClicks += 1
+  const promise = wait(1500).then(() => {
+    if (shouldFail) throw new Error("demo failure")
+    return { name: "demo data" }
+  })
+  // Sonner attaches its own handlers, but keep an explicit catch so the
+  // rejection can never surface as an unhandled promise rejection.
+  promise.catch(() => {})
+  return promise
+}
+
 const triggers = [
   {
     label: "Default",
@@ -35,7 +53,7 @@ const triggers = [
     label: "Promise",
     variant: "default",
     fire: () =>
-      toast.promise(wait(1500).then(() => ({ name: "demo data" })), {
+      toast.promise(loadDemoData(), {
         loading: "Loading demo data…",
         success: (data) => `Loaded ${data.name} successfully`,
         error: "Failed to load demo data",
@@ -75,7 +93,8 @@ export function ToastPlayground() {
         ))}
       </div>
       <p className="mt-4 text-center text-xs text-muted-foreground">
-        Promise resolves after ~1.5s. Action shows an Undo button.
+        Promise takes ~1.5s and alternates between success and failure.
+        Action shows an Undo button.
       </p>
     </section>
   )
