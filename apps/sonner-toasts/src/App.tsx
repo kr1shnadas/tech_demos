@@ -1,49 +1,17 @@
-import { Toaster, toast } from 'sonner'
-import './App.css'
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+import { ToastPlayground } from "@/components/toast-playground"
 
 function App() {
-  const firePromise = () =>
-    toast.promise(wait(1500).then(() => ({ name: 'demo data' })), {
-      loading: 'Loading demo data…',
-      success: (data) => `Loaded ${data.name} successfully`,
-      error: 'Failed to load demo data',
-    })
-
   return (
-    <main className="playground">
-      <h1>Sonner playground</h1>
-      <p className="subtitle">
-        Click a button to fire a toast. Promise resolves after ~1.5s.
-      </p>
-      <div className="buttons">
-        <button
-          type="button"
-          className="btn success"
-          onClick={() => toast.success('Everything worked!')}
-        >
-          Success
-        </button>
-        <button
-          type="button"
-          className="btn error"
-          onClick={() => toast.error('Something went wrong')}
-        >
-          Error
-        </button>
-        <button
-          type="button"
-          className="btn info"
-          onClick={() => toast.info('Here is some information')}
-        >
-          Info
-        </button>
-        <button type="button" className="btn promise" onClick={firePromise}>
-          Promise
-        </button>
+    <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-8 text-foreground">
+      <div className="text-center">
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Sonner playground
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Click a button to fire a toast.
+        </p>
       </div>
-      <Toaster position="bottom-right" richColors />
+      <ToastPlayground />
     </main>
   )
 }

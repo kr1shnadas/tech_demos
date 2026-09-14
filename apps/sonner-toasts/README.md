@@ -1,8 +1,9 @@
 # Sonner playground
 
 One-screen playground for [Sonner](https://sonner.emilkowal.ski/) toasts:
-buttons that fire success, error, info, and promise toasts (promise resolves
-after ~1.5s).
+eight triggers covering default, success, error, warning, info, promise
+(resolves after ~1.5s), action (with Undo), and rich (title + description)
+toasts.
 
 ## Run
 
@@ -19,5 +20,17 @@ buttons.
 
 ## Stack
 
-Vite + React + TypeScript, `sonner` for toasts. `bunfig.toml` pins
-`[install] minimumReleaseAge = 259200` (3 days) for supply-chain safety.
+- Vite + React + TypeScript (scaffolded with `bun create vite`, react-ts template)
+- Tailwind CSS v4 (`@tailwindcss/vite`)
+- shadcn/ui: `button` + `sonner` (Toaster) only
+- `sonner`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`
+- `bunfig.toml` pins `[install] minimumReleaseAge = 259200` (3 days) for
+  supply-chain safety
+
+## Layout
+
+- `src/main.tsx` — mounts `<Toaster />` + `<App />`
+- `src/App.tsx` — the single screen
+- `src/components/toast-playground.tsx` — the eight toast triggers
+- `src/components/ui/button.tsx`, `src/components/ui/sonner.tsx` — shadcn components
+- `src/lib/utils.ts` — `cn()` helper
