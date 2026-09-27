@@ -1,0 +1,16 @@
+{
+  "name": "@krishnadas/fullstack-modules",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reusable, independently runnable fullstack modules in Node.js and TypeScript",
+  "author": "Krishna Das",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kr1shnadas/tech_demos.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
