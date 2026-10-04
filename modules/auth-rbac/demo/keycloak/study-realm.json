@@ -1,0 +1,84 @@
+{
+  "realm": "study",
+  "displayName": "Study",
+  "enabled": true,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "roles": {
+    "realm": [
+      { "name": "clinician", "description": "Study workspace" },
+      { "name": "auditor", "description": "Audit review" },
+      { "name": "admin", "description": "Study workspace and audit review" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "auth-rbac-demo",
+      "name": "Auth RBAC demo",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*",
+        "http://localhost:4200/*",
+        "http://127.0.0.1:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4200",
+        "http://127.0.0.1:4200"
+      ],
+      "protocolMappers": [
+        {
+          "name": "audience-demo",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "auth-rbac-demo",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "clinician",
+      "enabled": true,
+      "email": "meera.shah@demo.local",
+      "emailVerified": true,
+      "firstName": "Meera",
+      "lastName": "Shah",
+      "credentials": [{ "type": "password", "value": "clinician", "temporary": false }],
+      "realmRoles": ["clinician"]
+    },
+    {
+      "username": "auditor",
+      "enabled": true,
+      "email": "owen.blake@demo.local",
+      "emailVerified": true,
+      "firstName": "Owen",
+      "lastName": "Blake",
+      "credentials": [{ "type": "password", "value": "auditor", "temporary": false }],
+      "realmRoles": ["auditor"]
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "krishna.das@demo.local",
+      "emailVerified": true,
+      "firstName": "Krishna",
+      "lastName": "Das",
+      "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
+      "realmRoles": ["admin", "clinician", "auditor"]
+    }
+  ]
+}

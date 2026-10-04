@@ -6,10 +6,13 @@ This repository is my collection of reusable, production-grade fullstack buildin
 
 I add modules over time as I extract and polish patterns from real projects, so the list below will grow.
 
+## Modules
+
+- [Authentication and role-based access](modules/auth-rbac/) — OIDC/JWT sign-in and role checks for NestJS, React and Angular
+
 ## Planned modules
 
 - GxP audit trail
-- Authentication and role-based access
 - Search
 - Electronic signatures
 - File storage on S3
