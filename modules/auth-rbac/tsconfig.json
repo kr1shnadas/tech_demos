@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "types": ["node"],
+    "useDefineForClassFields": false,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "demo/api/**/*.ts",
+    "demo/react/**/*.ts",
+    "demo/react/**/*.tsx",
+    "demo/shared/**/*.ts",
+    "test/**/*.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}
