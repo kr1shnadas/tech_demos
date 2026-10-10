@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Krishna Das
+# See NOTICE at the repository root.
+
+node_modules
+dist
+coverage
+test
+terraform
+ci
+.git
+*.md
+.env
+*.tfvars

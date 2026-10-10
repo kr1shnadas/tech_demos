@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Krishna Das
+# See NOTICE at the repository root.
+
+# From this directory: docker compose up --build
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      DEPLOY_ENVIRONMENT: local
+      DEPLOY_SERVICE_NAME: deploy-demo
+      DEPLOY_REGION: us-east-1
+      DEPLOY_IMAGE_TAG_STRATEGY: git-sha
+      DEPLOY_IMAGE_TAG: local
+      DEPLOY_ENABLE_LAMBDA: "false"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
