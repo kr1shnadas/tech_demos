@@ -9,17 +9,19 @@ I add modules over time as I extract and polish patterns from real projects, so 
 ## Modules
 
 - [Authentication and role-based access](modules/auth-rbac/) — OIDC/JWT sign-in and role checks for NestJS, React and Angular
+- [Deployment templates](modules/deploy-templates/) — Docker, GitHub Actions and Terraform for a NestJS service on ECS Fargate
 
 ## Planned modules
 
-- GxP audit trail
-- Search
-- Electronic signatures
-- File storage on S3
 - Background jobs
-- Microfrontend shell
 - Observability
-- Deployment templates
+- Kafka event streaming
+- File storage on S3
+- Search
+- Multi-tenant IAM
+- GxP audit trail
+- Electronic signatures
+- Microfrontend shell
 
 ## Running a module
 

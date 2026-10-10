@@ -1,0 +1,45 @@
+{
+  "name": "@krishnadas/deploy-templates",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Docker, GitHub Actions and Terraform for a NestJS service on ECS Fargate",
+  "author": "Krishna Das <7599778+kr1shnadas@users.noreply.github.com>",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx demo/api/main.ts",
+    "start": "node dist/demo/api/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "tfvars": "tsx src/cli/write-tfvars.ts",
+    "tf:fmt": "terraform -chdir=terraform fmt -check -recursive",
+    "tf:validate": "terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate",
+    "tf:test": "terraform -chdir=terraform test"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/platform-express": "^10.4.15",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^10.4.15",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.15.30",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.1.1",
+    "tsx": "^4.20.3",
+    "typescript": "5.8.3",
+    "vitest": "^2.1.9"
+  }
+}
