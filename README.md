@@ -10,12 +10,12 @@ I add modules over time as I extract and polish patterns from real projects, so 
 
 - [Authentication and role-based access](modules/auth-rbac/) — OIDC/JWT sign-in and role checks for NestJS, React and Angular
 - [Deployment templates](modules/deploy-templates/) — Docker, GitHub Actions and Terraform for a NestJS service on ECS Fargate
+- [Kafka event streaming](modules/kafka-event-stream/) — transactional outbox, idempotent consumers, retry topics and a dead-letter queue on Kafka
 
 ## Planned modules
 
 - Background jobs
 - Observability
-- Kafka event streaming
 - File storage on S3
 - Search
 - Multi-tenant IAM
