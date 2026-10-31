@@ -1,0 +1,118 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2026 Krishna Das
+ *
+ * See NOTICE at the repository root.
+ */
+
+:root {
+  color-scheme: light;
+  --paper: #f3efe6;
+  --ink: #1e1a16;
+  --muted: #5e564c;
+  --line: #ddd4c6;
+  --card: #fffdf8;
+  --teal: #0e5f5c;
+  --deny: #8d2e2e;
+  --allow: #1d6b3a;
+  --deny-bg: #f8ebe3;
+  --allow-bg: #e7f2ea;
+  --slow: #8a5a12;
+  --slow-bg: #f8f0df;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font: 16px/1.5 "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+button, a { font: inherit; }
+
+button {
+  border: 1px solid var(--teal);
+  background: var(--teal);
+  color: #f6f3ec;
+  padding: 10px 16px;
+}
+
+button:disabled { opacity: 0.6; }
+
+button.slow {
+  background: var(--slow);
+  border-color: var(--slow);
+}
+
+button.danger {
+  background: var(--deny);
+  border-color: var(--deny);
+}
+
+a { color: var(--teal); }
+
+.page { max-width: 980px; margin: 0 auto; padding: 28px 20px 48px; }
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+
+.brand { font-family: Georgia, Palatino, serif; font-size: 32px; margin: 0; font-weight: 500; }
+.eyebrow { margin: 0; letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+.shell-label {
+  border: 1px solid var(--line);
+  background: var(--card);
+  padding: 6px 10px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+.note { margin: 0 0 16px; color: var(--muted); }
+.error { margin: 0 0 16px; color: var(--deny); }
+
+.links { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 20px; font-size: 14px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 16px;
+}
+
+.card h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+.muted { color: var(--muted); margin: 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: var(--allow-bg);
+  color: var(--allow);
+}
+.badge.slow { background: var(--slow-bg); color: var(--slow); border-color: transparent; }
+.badge.fail { background: var(--deny-bg); color: var(--deny); border-color: transparent; }
+
+.mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; }
+
+footer { margin-top: 28px; color: var(--muted); font-size: 13px; }
+footer p { margin: 4px 0; }
+.fingerprint { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; }
+
+@media (max-width: 800px) {
+  .brand { font-size: 28px; }
+  table { display: block; overflow-x: auto; }
+}

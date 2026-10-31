@@ -1,0 +1,64 @@
+{
+  "name": "@krishnadas/observability",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Traces, structured logs and Prometheus metrics for NestJS services",
+  "author": "Krishna Das <7599778+kr1shnadas@users.noreply.github.com>",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "concurrently -n catalog,gateway,react -c blue,green,magenta \"pnpm dev:catalog\" \"pnpm dev:gateway\" \"pnpm dev:react\"",
+    "dev:catalog": "tsx demo/catalog/main.ts",
+    "dev:gateway": "tsx demo/gateway/main.ts",
+    "dev:react": "vite --config demo/react/vite.config.ts",
+    "build": "tsc -p tsconfig.build.json && vite build --config demo/react/vite.config.ts",
+    "start": "node dist/demo/gateway/main.js",
+    "start:catalog": "node dist/demo/catalog/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/platform-express": "^10.4.15",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/context-async-hooks": "2.12.0",
+    "@opentelemetry/core": "2.12.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
+    "@opentelemetry/instrumentation": "0.223.0",
+    "@opentelemetry/instrumentation-http": "0.223.0",
+    "@opentelemetry/instrumentation-undici": "0.33.0",
+    "@opentelemetry/resources": "2.12.0",
+    "@opentelemetry/sdk-trace": "2.12.0",
+    "@opentelemetry/semantic-conventions": "1.37.0",
+    "express": "^4.21.2",
+    "pino": "^9.6.0",
+    "prom-client": "^15.1.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^10.4.15",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.15.30",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@types/supertest": "^6.0.3",
+    "@vitejs/plugin-react": "^4.5.2",
+    "concurrently": "^9.1.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "supertest": "^7.1.1",
+    "tsx": "^4.20.3",
+    "typescript": "5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^2.1.9"
+  }
+}
