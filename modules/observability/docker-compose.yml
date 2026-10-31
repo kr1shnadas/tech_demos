@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Krishna Das
+# See NOTICE at the repository root.
+
+# From this directory: docker compose up --build
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector:0.128.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4318:4318"
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      gateway:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: light
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/observability.json
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3002:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  catalog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["node", "dist/demo/catalog/main.js"]
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      O11Y_SERVICE_NAME: study-catalog
+      O11Y_EXPORTER_ENDPOINT: http://otel-collector:4318/v1/traces
+      O11Y_SAMPLING_RATIO: "1"
+      SLOW_MS: "800"
+    depends_on:
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health/live').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      CATALOG_BASE_URL: http://catalog:3001
+      O11Y_SERVICE_NAME: study-gateway
+      O11Y_EXPORTER_ENDPOINT: http://otel-collector:4318/v1/traces
+      O11Y_SAMPLING_RATIO: "1"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health/live').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
