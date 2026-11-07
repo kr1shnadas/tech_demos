@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Krishna Das
+# See NOTICE at the repository root.
+
+# From this directory: docker compose up --build
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      JOBS_REDIS_HOST: redis
+      JOBS_REDIS_PORT: "6379"
+      JOBS_PREFIX: bg
+      JOBS_ATTEMPTS: "3"
+      JOBS_BACKOFF_TYPE: exponential
+      JOBS_BACKOFF_DELAY_MS: "700"
+      JOBS_CONCURRENCY: "5"
+      JOBS_RATE_LIMIT_MAX: "50"
+      JOBS_RATE_LIMIT_DURATION_MS: "1000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health/live').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
