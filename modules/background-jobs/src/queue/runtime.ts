@@ -279,19 +279,32 @@ export class JobRuntime {
     if (!handler) {
       throw new UnrecoverableError(`No handler for "${job.name}" on queue "${registration.spec.name}".`);
     }
+    // BullMQ counts finished attempts. During the run the field is still the previous total.
+    const attemptsMade = job.attemptsMade + 1;
+    const maxAttempts = job.opts.attempts ?? this.config.defaults.attempts;
     try {
       return await handler({
         id: job.id ?? "",
         name: job.name,
         queueName: registration.spec.name,
         data: job.data,
-        // BullMQ counts finished attempts. During the run the field is still the previous total.
-        attemptsMade: job.attemptsMade + 1,
-        maxAttempts: job.opts.attempts ?? this.config.defaults.attempts,
+        attemptsMade,
+        maxAttempts,
       });
     } catch (error) {
-      if (error instanceof UnrecoverableJobError) throw new UnrecoverableError(error.message);
-      throw error;
+      const unrecoverable = error instanceof UnrecoverableJobError || error instanceof UnrecoverableError;
+      const normalized = error instanceof UnrecoverableJobError ? new UnrecoverableError(error.message) : error;
+      // Write the dead letter before the job is marked failed. The failed event
+      // is delivered on its own, and a reader can observe that event first.
+      if (shouldDeadLetter({ attemptsMade, maxAttempts, unrecoverable })) {
+        const cause = normalized instanceof Error ? normalized : new Error("job failed");
+        try {
+          await this.writeDeadLetter(job, cause, unrecoverable, attemptsMade);
+        } catch {
+          // The failed handler writes the letter again when this copy did not land.
+        }
+      }
+      throw normalized;
     }
   }
 
@@ -309,17 +322,28 @@ export class JobRuntime {
       failedMessage(job.queueName, job.name, subjectOf(job.data), job.attemptsMade, error.message, nextDelayMs),
     );
     if (!dead) return;
-    await this.copyToDeadLetter(job, error, unrecoverable);
+    await this.copyToDeadLetter(job, error, unrecoverable, job.attemptsMade);
   }
 
-  private async copyToDeadLetter(job: Job, error: Error, unrecoverable: boolean): Promise<void> {
+  private async copyToDeadLetter(job: Job, error: Error, unrecoverable: boolean, attemptsMade: number): Promise<void> {
+    await this.writeDeadLetter(job, error, unrecoverable, attemptsMade);
+    this.record(
+      "dead",
+      job.queueName,
+      job.name,
+      job.id ?? "",
+      deadMessage(job.queueName, job.name, subjectOf(job.data), attemptsMade, error.message),
+    );
+  }
+
+  private async writeDeadLetter(job: Job, error: Error, unrecoverable: boolean, attemptsMade: number): Promise<void> {
     const record: DeadLetterRecord = {
       sourceQueue: job.queueName,
       jobName: job.name,
       jobId: job.id ?? "",
       data: job.data,
       failedReason: error.message,
-      attemptsMade: job.attemptsMade,
+      attemptsMade,
       failedAt: new Date().toISOString(),
       unrecoverable,
     };
@@ -330,13 +354,6 @@ export class JobRuntime {
     } catch (cause) {
       if (!isDuplicate(cause)) throw cause;
     }
-    this.record(
-      "dead",
-      record.sourceQueue,
-      record.jobName,
-      record.jobId,
-      deadMessage(record.sourceQueue, record.jobName, subjectOf(record.data), record.attemptsMade, error.message),
-    );
   }
 
   private async listFailed(): Promise<FailedRow[]> {
