@@ -6,7 +6,7 @@ See NOTICE at the repository root.
 
 # Authentication and role-based access
 
-I have wired this the same way on CareTria, where the Angular client signs in with MSAL against Okta, and on platform APIs that only trust the access token. The route guard decides what a person sees. The API guard decides what they can call. This module is that slice, small enough to clone and run on its own.
+I have wired this the same way on a regulated enterprise platform, where the Angular client signs in with MSAL against Okta, and on platform APIs that only trust the access token. The route guard decides what a person sees. The API guard decides what they can call. This module is that slice, small enough to clone and run on its own.
 
 It checks an OIDC access token (signature, issuer, audience, expiry) and then a role. Okta, Azure AD and Keycloak are plugins that fill in the issuer settings. A local identity provider is included so the demo runs without a cloud account.
 
