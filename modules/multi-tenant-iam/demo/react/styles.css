@@ -1,0 +1,164 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2026 Krishna Das
+ *
+ * See NOTICE at the repository root.
+ */
+
+:root {
+  color-scheme: light;
+  --paper: #f3efe6;
+  --ink: #1e1a16;
+  --muted: #5e564c;
+  --line: #ddd4c6;
+  --card: #fffdf8;
+  --accent: #0e5f5c;
+  --accent-ink: #f6f3ec;
+  --deny: #8d2e2e;
+  --allow: #1d6b3a;
+  --deny-bg: #f8ebe3;
+  --allow-bg: #e7f2ea;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, var(--accent) 0 8px, transparent 8px),
+    var(--paper);
+  color: var(--ink);
+  font: 16px/1.5 "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+button, input, textarea { font: inherit; }
+
+button {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 8px 14px;
+}
+
+button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+button:disabled { opacity: 0.55; }
+
+.page { max-width: 1100px; margin: 0 auto; padding: 28px 20px 48px; }
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+
+.brand { font-family: Georgia, Palatino, serif; font-size: 32px; margin: 0; font-weight: 500; }
+.eyebrow { margin: 0; letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+.shell-label {
+  border: 1px solid var(--line);
+  background: var(--card);
+  padding: 6px 10px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.switchers { display: grid; gap: 14px; margin: 18px 0 8px; }
+.switchers p { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 12px 0 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.scope strong { color: var(--ink); font-weight: 600; }
+
+.note { margin: 0 0 16px; color: var(--muted); }
+.error { margin: 0 0 16px; color: var(--deny); }
+
+.board {
+  display: grid;
+  grid-template-columns: 1.25fr 0.9fr;
+  gap: 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 16px;
+  min-height: 280px;
+}
+
+.card h2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.card h2 span { color: var(--muted); font-size: 13px; font-weight: 500; }
+
+.composer { display: grid; gap: 8px; margin-bottom: 14px; }
+.composer input, .composer textarea {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 10px;
+  width: 100%;
+}
+.composer textarea { min-height: 68px; resize: vertical; }
+.closed {
+  background: var(--deny-bg);
+  color: var(--deny);
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  font-size: 14px;
+}
+
+.row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.row strong { font-weight: 600; }
+.row p { margin: 4px 0 0; }
+.muted { color: var(--muted); margin: 0; }
+.meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: var(--allow-bg);
+  color: var(--allow);
+}
+
+.members { margin-top: 14px; }
+.members li { margin: 2px 0; }
+
+footer { margin-top: 28px; color: var(--muted); font-size: 13px; }
+footer p { margin: 4px 0; }
+.fingerprint { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; }
+
+@media (max-width: 800px) {
+  .board { grid-template-columns: 1fr; }
+  .brand { font-size: 28px; }
+}

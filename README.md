@@ -13,12 +13,12 @@ I add modules over time as I extract and polish patterns from real projects, so 
 - [Kafka event streaming](modules/kafka-event-stream/) — transactional outbox, idempotent consumers, retry topics and a dead-letter queue on Kafka
 - [Background jobs](modules/background-jobs/) — BullMQ queue, retries, dead-letter handling and a small status page
 - [Observability](modules/observability/) — traces, structured logs and Prometheus metrics for NestJS services
+- [Multi-tenant IAM](modules/multi-tenant-iam/) — tenant resolution, Postgres row-level security, per-tenant roles and an audit trail
 
 ## Planned modules
 
 - File storage on S3
 - Search
-- Multi-tenant IAM
 - GxP audit trail
 - Electronic signatures
 - Microfrontend shell
