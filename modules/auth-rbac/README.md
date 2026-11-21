@@ -44,14 +44,44 @@ pnpm --filter @krishnadas/auth-rbac test
 
 Copy `.env.example` to `.env` when you want to point the API at Okta, Azure AD or Keycloak. The demo pages read `GET /api/config`, so they follow the API.
 
-## Configuration
+## Usage
 
-`defineAuthConfig` merges a provider preset with overrides. `loadAuthConfig` does the same from the environment. Defaults target the local demo.
+The package name is `@krishnadas/auth-rbac`. It is a private workspace package, so it is not on a public registry. In another package in this repository, depend on it and install from the root:
+
+```json
+{
+  "dependencies": {
+    "@krishnadas/auth-rbac": "workspace:*"
+  }
+}
+```
+
+```bash
+pnpm install
+```
+
+Node.js 20 or newer. The export map points at TypeScript source (`src/index.ts`, `src/react/require-role.tsx`, `src/angular/role.guard.ts`), so the project that imports it has to compile that source. The demos do this with `tsx`, Vite and the Angular compiler.
+
+To use the module in a different repository, copy `modules/auth-rbac` and point the dependency at that folder (`workspace:*` or `file:`). Keep the license header on the copied files, and keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) with the copy.
+
+Import the Nest API from `@krishnadas/auth-rbac`. The React guard is `@krishnadas/auth-rbac/react`. The Angular guard is `@krishnadas/auth-rbac/angular`.
+
+`defineAuthConfig(preset, overrides)` merges a provider preset with `Partial<AuthModuleConfig>`. `loadAuthConfig()` builds the same object from the environment. Defaults target the local demo. `AuthRbacModule.register` takes `{ config: AuthModuleConfig, localJwks?: JSONWebKeySet }`. Pass `localJwks` only when the process should trust a key set you already hold instead of fetching `jwksUri`.
 
 ```ts
-import { defineAuthConfig, oktaProvider } from "@krishnadas/auth-rbac";
+import { Controller, Get, Module, UseGuards } from "@nestjs/common";
+import {
+  AuthRbacModule,
+  CurrentUser,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  defineAuthConfig,
+  oktaProvider,
+  type AuthUser,
+} from "@krishnadas/auth-rbac";
 
-export const authConfig = defineAuthConfig(
+const authConfig = defineAuthConfig(
   oktaProvider({
     domain: "example.okta.com",
     clientId: "0oaExample",
@@ -65,21 +95,51 @@ export const authConfig = defineAuthConfig(
     },
   },
 );
+
+@Controller("audit")
+export class AuditController {
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("auditor", "admin")
+  @Get()
+  audit(@CurrentUser() user: AuthUser) {
+    return user.name;
+  }
+}
+
+@Module({
+  imports: [AuthRbacModule.register({ config: authConfig })],
+  controllers: [AuditController],
+})
+export class AppModule {}
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `provider` | `local` | `okta`, `azure-ad`, `keycloak` or `local` |
-| `issuer` | `http://localhost:4100` | Expected `iss` claim |
-| `audience` | `auth-rbac-demo` | Expected `aud` claim. `extraAudiences` adds more |
-| `clientId` | `auth-rbac-demo` | Public client id used by the demos |
-| `jwksUri` | `http://localhost:4100/jwks` | Signing keys |
-| `rolesClaim` | `roles` | Dot path of the role claim. Keycloak's preset uses `realm_access.roles`. Okta's preset uses `groups` |
-| `scopes` | `openid profile email` | Sent on the authorize request |
-| `clockToleranceSeconds` | `60` | Skew I allow when checking `exp` |
-| `roleMap` | empty | Rename an identity-provider value into an application role. Unmapped values pass through |
+Any listed role is enough. A route with no `@Roles()` only requires a valid token. A role claim may be an array, a single string, or a comma-separated string. `JwtAuthGuard` answers 401 when the bearer token is missing or invalid. `RolesGuard` answers 403 when none of the listed roles are on the token.
 
-Environment variables use the same names with an `AUTH_` prefix: `AUTH_PROVIDER`, `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_CLIENT_ID`, `AUTH_JWKS_URI`, `AUTH_ROLES_CLAIM`, `AUTH_SCOPES`, `AUTH_CLOCK_TOLERANCE`, `AUTH_ROLE_MAP` (JSON object). Provider-specific variables:
+`loadAuthConfig()` is the other way to fill `config`, when the process should follow the environment instead of a preset written in code.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `provider` | `"okta" \| "azure-ad" \| "keycloak" \| "local"` | `"local"` | Which preset built the issuer fields |
+| `issuer` | `string` | `http://localhost:4100` | Expected `iss` claim |
+| `audience` | `string` | `auth-rbac-demo` | Expected `aud` claim |
+| `extraAudiences` | `readonly string[]` | `[]` | Accepted in addition to `audience` |
+| `clientId` | `string` | `auth-rbac-demo` | Public client id |
+| `jwksUri` | `string` | `http://localhost:4100/jwks` | Signing keys |
+| `rolesClaim` | `string` | `"roles"` | Dot path of the role claim. The Keycloak preset uses `realm_access.roles`. The Okta preset uses `groups` |
+| `scopes` | `readonly string[]` | `["openid", "profile", "email"]` | Sent on the authorize request |
+| `clockToleranceSeconds` | `number` | `60` | Skew allowed when checking `exp` |
+| `roleMap` | `Readonly<Record<string, string>>` | `{}` | Rename an identity-provider value into an application role. Unmapped values pass through |
+
+The provider helpers return a `ProviderPreset`. Optional fields fall back as follows:
+
+| Helper | Required | Defaults on the preset |
+| --- | --- | --- |
+| `oktaProvider` | `domain`, `clientId` | `authorizationServerId` `"default"`, `audience` `"api://default"`, `rolesClaim` `"groups"`. Issuer is `https://{domain}/oauth2/{server}` |
+| `azureAdProvider` | `tenantId`, `clientId` | `audience` is the client id, `rolesClaim` is `"roles"`. Issuer is `https://login.microsoftonline.com/{tenant}/v2.0` |
+| `keycloakProvider` | `baseUrl`, `realm`, `clientId` | `audience` is the client id, `rolesClaim` is `"realm_access.roles"`. Issuer is `{base}/realms/{realm}` |
+| `localDemoProvider` | none | `baseUrl` `http://localhost:4100`, `clientId` and `audience` `auth-rbac-demo`, `rolesClaim` `"roles"` |
+
+Environment variables use an `AUTH_` prefix: `AUTH_PROVIDER`, `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_CLIENT_ID`, `AUTH_JWKS_URI`, `AUTH_ROLES_CLAIM`, `AUTH_SCOPES`, `AUTH_CLOCK_TOLERANCE`, `AUTH_ROLE_MAP` (JSON object). Provider-specific variables:
 
 | Provider | Variables | Issuer the plugin builds |
 | --- | --- | --- |
@@ -88,20 +148,33 @@ Environment variables use the same names with an `AUTH_` prefix: `AUTH_PROVIDER`
 | Keycloak | `KEYCLOAK_BASE_URL`, `KEYCLOAK_REALM` (default `study`), `AUTH_CLIENT_ID` | `{base}/realms/{realm}` |
 | Local | `IDP_ISSUER` or `AUTH_ISSUER` | that URL |
 
-A role claim may be an array, a single string, or a comma-separated string. Nest usage:
+React wraps the route element. `RequireRole` reads the access token from `sessionStorage` under the key `auth-rbac.access-token`. A missing or rejected token redirects to `/`. A valid token with the wrong role stays on the URL and renders `denied`.
 
-```ts
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("auditor", "admin")
-@Get("audit")
-audit(@CurrentUser() user: AuthUser) {
-  return auditView(user.name);
-}
+```tsx
+import { RequireRole } from "@krishnadas/auth-rbac/react";
+
+<RequireRole
+  roles={["auditor", "admin"]}
+  config={authConfig}
+  denied={(user) => <p>Denied for {user.name}</p>}
+>
+  <AuditPage />
+</RequireRole>
 ```
 
-Any listed role is enough. A route with no `@Roles()` only requires a valid token.
+Angular registers `requireRoles` as a `canActivate` guard. It uses the same session key. A missing role returns a `UrlTree` to `/denied`.
 
-React wraps the route element in `RequireRole` (`@krishnadas/auth-rbac/react`). Angular registers `requireRoles` (`@krishnadas/auth-rbac/angular`) as a `canActivate` guard.
+```ts
+import { requireRoles } from "@krishnadas/auth-rbac/angular";
+
+export const routes = [
+  {
+    path: "audit",
+    canActivate: [requireRoles(["auditor", "admin"], authConfig)],
+    component: AuditPage,
+  },
+];
+```
 
 ## Design
 
@@ -127,6 +200,10 @@ docker compose up
 
 Keycloak listens on http://localhost:8080 (admin console user `admin`, password `admin`) and imports the `study` realm. The same three accounts exist there. Point the API at it with the Keycloak block in `.env.example` and start `pnpm dev` again. The realm adds an audience mapper so the access token `aud` is `auth-rbac-demo`, which is the value the default config expects.
 
-## License
+## Credit / attribution
 
-Apache-2.0. See [NOTICE](../../NOTICE) at the repository root. Copyright 2026 Krishna Das.
+This module is authored by Krishna Das ([github.com/kr1shnadas](https://github.com/kr1shnadas)).
+
+Anyone who uses it must give credit to Krishna Das. That covers calling it from your own service and shipping a copy or a derivative. Keep the Apache-2.0 license header on the source files (`SPDX-License-Identifier: Apache-2.0` and `Copyright 2026 Krishna Das`). Keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) intact. Section 4(d) of the Apache License 2.0 is why the NOTICE stays: a redistribution or a derivative work has to retain that file and give visible credit to Krishna Das, in the source, in the documentation that goes with it, or on a display the work normally shows.
+
+The license remains Apache-2.0. This section does not change it.

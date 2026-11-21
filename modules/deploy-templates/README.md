@@ -51,49 +51,72 @@ The workflow template is `ci/deploy.yml`. Copy it to `.github/workflows/deploy.y
 
 Before that pipeline can apply, set two repository variables: `AWS_DEPLOY_ROLE_ARN` and `TF_STATE_BUCKET`. Optional variables `AWS_REGION`, `SERVICE_NAME`, `ENVIRONMENT_NAME`, `IMAGE_TAG_STRATEGY` and `ENABLE_LAMBDA` override the defaults below. The state file uses an S3 backend with the lockfile from Terraform 1.10, so a second apply sees the first. Local checks leave the backend on disk and do not need the bucket.
 
-## Configuration
+## Usage
 
-`defineDeployConfig` merges overrides onto the defaults. `loadDeployConfig` does the same from the environment. `toTfvars` is what Terraform reads, so the object is the source of truth.
+The package name is `@krishnadas/deploy-templates`. It is a private workspace package, so it is not on a public registry. In another package in this repository, depend on it and install from the root:
+
+```json
+{
+  "dependencies": {
+    "@krishnadas/deploy-templates": "workspace:*"
+  }
+}
+```
+
+```bash
+pnpm install
+```
+
+Node.js 20 or newer. The export map points at `src/index.ts`, so the project that imports it has to compile that TypeScript. The demo uses `tsx`.
+
+The files you copy into a service are the other half of the module: `Dockerfile`, `docker-compose.yml`, `ci/deploy.yml`, and the `terraform/` directory. Copy `ci/deploy.yml` to `.github/workflows/deploy.yml` in that service when you are ready to build and deploy. I keep it out of this repository's workflow directory so nothing here assumes a role or pushes an image.
+
+To use the module in a different repository, copy `modules/deploy-templates` (or just the template files plus the `src/config` helpers) and point a dependency at the package folder (`workspace:*` or `file:`). Keep the license header on the copied files, and keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) with the copy.
+
+Import from `@krishnadas/deploy-templates`. There is no Nest module in the package. The object is the source of truth, and `toTfvars` is what Terraform reads. `defineDeployConfig` merges `Partial<DeployConfig>` onto the defaults. When `region` is set and `availabilityZones` is not, the zones become `{region}a` and `{region}b`. `loadDeployConfig()` reads the `DEPLOY_` variables. `writeTfvars(config, filePath)` writes the HCL file. `pnpm tfvars` does that for `terraform/terraform.tfvars` from the environment. `resolveImageTag(strategy, { gitSha, version })` is the tag the task definition pins.
 
 ```ts
-import { defineDeployConfig } from "@krishnadas/deploy-templates";
+import { defineDeployConfig, resolveImageTag, writeTfvars } from "@krishnadas/deploy-templates";
 
-export const deployConfig = defineDeployConfig({
+const deployConfig = defineDeployConfig({
   region: "eu-west-1",
   serviceName: "study-api",
   environmentName: "dev",
   imageTagStrategy: "git-sha",
+  imageTag: resolveImageTag("git-sha", { gitSha: process.env.GITHUB_SHA }),
 });
+
+writeTfvars(deployConfig, "terraform/terraform.tfvars");
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `region` | `us-east-1` | Region for every resource. Zones default to `{region}a` and `{region}b` when you leave them unset |
-| `serviceName` | `deploy-demo` | Short name used in resource names |
-| `containerPort` | `3000` | Port the container listens on. The load balancer calls `/health` |
-| `cpu` | `256` | Fargate CPU units |
-| `memory` | `512` | Fargate memory in MiB. It has to be a size AWS accepts for that CPU |
-| `desiredCount` | `1` | Running tasks. `0` stops the tasks and leaves the service |
-| `environmentName` | `dev` | Appended to resource names |
-| `imageTagStrategy` | `git-sha` | `git-sha`, `semver` or `latest` |
-| `imageTag` | `local` | Tag the task definition pins. CI sets this from the strategy |
-| `enableLambda` | `false` | Also publish the image as a Lambda function |
-| `lambdaMemory` | `512` | Lambda memory, used only when the switch is on |
-| `lambdaTimeout` | `15` | Lambda timeout in seconds |
-| `vpcCidr` | `10.40.0.0/16` | CIDR for the VPC |
-| `availabilityZones` | `us-east-1a`, `us-east-1b` | Two zones |
-| `enableNatGateway` | `false` | Private tasks and a NAT gateway when true |
-| `deletionProtection` | `false` | Load balancer deletion protection |
-| `enableGithubOidc` | `false` | Create the GitHub OIDC provider and the deploy role |
-| `githubOrg` | empty | Required when OIDC is on |
-| `githubRepo` | empty | Required when OIDC is on |
-| `githubBranch` | `main` | Branch allowed to assume the deploy role |
+`serviceName` and `environmentName` together stay at 24 characters or fewer, so the load balancer name fits. The repository name is `{serviceName}-{environmentName}`. `cpu` has to be a Fargate size (`256`, `512`, `1024`, `2048` or `4096`), and `memory` has to be one of the MiB sizes `fargateMemoryForCpu(cpu)` returns. With `enableGithubOidc` set, `githubOrg` and `githubRepo` are required.
 
-`serviceName` and `environmentName` together stay at 24 characters or fewer, so the load balancer name fits. The repository name is `{serviceName}-{environmentName}`.
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `region` | `string` | `us-east-1` | Region for every resource. Zones default to `{region}a` and `{region}b` when you leave them unset |
+| `serviceName` | `string` | `deploy-demo` | Short name used in resource names |
+| `containerPort` | `number` | `3000` | Port the container listens on. The load balancer calls `/health` |
+| `cpu` | `number` | `256` | Fargate CPU units |
+| `memory` | `number` | `512` | Fargate memory in MiB. It has to be a size AWS accepts for that CPU |
+| `desiredCount` | `number` | `1` | Running tasks, from 0 to 20. `0` stops the tasks and leaves the service |
+| `environmentName` | `string` | `dev` | Appended to resource names |
+| `imageTagStrategy` | `"git-sha" \| "semver" \| "latest"` | `"git-sha"` | How CI names the image |
+| `imageTag` | `string` | `local` | Tag the task definition pins. CI sets this from the strategy |
+| `enableLambda` | `boolean` | `false` | Also publish the image as a Lambda function |
+| `lambdaMemory` | `number` | `512` | Lambda memory, from 128 to 10240, used only when the switch is on |
+| `lambdaTimeout` | `number` | `15` | Lambda timeout in seconds, from 1 to 900 |
+| `vpcCidr` | `string` | `10.40.0.0/16` | CIDR for the VPC |
+| `availabilityZones` | `readonly [string, string]` | `us-east-1a`, `us-east-1b` | Two zones in `region` |
+| `enableNatGateway` | `boolean` | `false` | Private tasks and a NAT gateway when true |
+| `deletionProtection` | `boolean` | `false` | Load balancer deletion protection |
+| `enableGithubOidc` | `boolean` | `false` | Create the GitHub OIDC provider and the deploy role |
+| `githubOrg` | `string` | `""` | Required when OIDC is on |
+| `githubRepo` | `string` | `""` | Required when OIDC is on |
+| `githubBranch` | `string` | `main` | Branch allowed to assume the deploy role |
 
 Environment variables use a `DEPLOY_` prefix: `DEPLOY_REGION`, `DEPLOY_SERVICE_NAME`, `DEPLOY_CONTAINER_PORT`, `DEPLOY_CPU`, `DEPLOY_MEMORY`, `DEPLOY_DESIRED_COUNT`, `DEPLOY_ENVIRONMENT`, `DEPLOY_IMAGE_TAG_STRATEGY`, `DEPLOY_IMAGE_TAG`, `DEPLOY_ENABLE_LAMBDA`, `DEPLOY_LAMBDA_MEMORY`, `DEPLOY_LAMBDA_TIMEOUT`, `DEPLOY_VPC_CIDR`, `DEPLOY_AVAILABILITY_ZONES` (comma-separated), `DEPLOY_ENABLE_NAT_GATEWAY`, `DEPLOY_DELETION_PROTECTION`, `DEPLOY_ENABLE_GITHUB_OIDC`, `DEPLOY_GITHUB_ORG`, `DEPLOY_GITHUB_REPO`, `DEPLOY_GITHUB_BRANCH`.
 
-Booleans are the words `true` and `false`. When `DEPLOY_IMAGE_TAG` is unset, a `git-sha` strategy uses `GITHUB_SHA`, a `semver` strategy uses `DEPLOY_VERSION`, and a `latest` strategy uses the tag `latest`.
+Booleans are the words `true` and `false`. When `DEPLOY_IMAGE_TAG` is unset, a `git-sha` strategy uses `GITHUB_SHA`, a `semver` strategy uses `DEPLOY_VERSION`, and a `latest` strategy uses the tag `latest`. `resolveImageTag` throws if the sha or the version is missing for that strategy.
 
 ## Design
 
@@ -140,6 +163,10 @@ terraform -chdir=modules/deploy-templates/terraform destroy
 
 Stop the local container with `docker compose down` from `modules/deploy-templates`.
 
-## License
+## Credit / attribution
 
-Apache-2.0. See [NOTICE](../../NOTICE) at the repository root. Copyright 2026 Krishna Das.
+This module is authored by Krishna Das ([github.com/kr1shnadas](https://github.com/kr1shnadas)).
+
+Anyone who uses it must give credit to Krishna Das. That covers calling it from your own service and shipping a copy or a derivative. Keep the Apache-2.0 license header on the source files (`SPDX-License-Identifier: Apache-2.0` and `Copyright 2026 Krishna Das`). Keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) intact. Section 4(d) of the Apache License 2.0 is why the NOTICE stays: a redistribution or a derivative work has to retain that file and give visible credit to Krishna Das, in the source, in the documentation that goes with it, or on a display the work normally shows.
+
+The license remains Apache-2.0. This section does not change it.
