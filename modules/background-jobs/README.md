@@ -45,55 +45,132 @@ pnpm --filter @krishnadas/background-jobs test
 
 Stop the demo with `docker compose down` from this directory.
 
-## Configuration
+## Usage
 
-`defineJobsConfig` merges overrides onto the defaults. Nested objects merge field by field, so setting `defaults.attempts` keeps the backoff. `loadJobsConfig` does the same from the environment.
+The package name is `@krishnadas/background-jobs`. It is a private workspace package, so it is not on a public registry. In another package in this repository, depend on it and install from the root:
+
+```json
+{
+  "dependencies": {
+    "@krishnadas/background-jobs": "workspace:*"
+  }
+}
+```
+
+```bash
+pnpm install
+```
+
+Node.js 20 or newer, and a Redis the workers can reach. The export map points at `src/index.ts`, so the project that imports it has to compile that TypeScript. The demo uses `tsx`.
+
+To use the module in a different repository, copy `modules/background-jobs` and point the dependency at that folder (`workspace:*` or `file:`). Keep the license header on the copied files, and keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) with the copy.
+
+Import from `@krishnadas/background-jobs`. `defineJobsConfig` merges overrides onto the defaults. Nested objects merge field by field, so setting `defaults.attempts` keeps the backoff. `loadJobsConfig()` does the same from the environment, and reads a `.env` file in the working directory when one is present. Values already set in the environment win over that file.
+
+`JobsModule.register` takes `{ config: JobsConfig, queues: QueueRegistration[], closables?: Closable[] }`. Each registration is a `defineQueue` spec plus a handler map. `closables` are closed after the workers. That is where the idempotency Redis client goes.
+
+The module already ships four jobs. `queueRegistrations(store)` wires `ingestion` (`import-batch`, `sync-feed`) and `notification` (`send-notice`, `send-digest`). For a job of your own, define it the same way and pass that list instead.
 
 ```ts
-import { Module } from "@nestjs/common";
-import { defineJobsConfig, JobsModule, queueRegistrations, RedisIdempotencyStore } from "@krishnadas/background-jobs";
+import { Inject, Injectable, Module } from "@nestjs/common";
+import { NestFactory } from "@nestjs/core";
+import {
+  JOBS_RUNTIME,
+  JobsModule,
+  RedisIdempotencyStore,
+  defineJob,
+  defineJobsConfig,
+  defineQueue,
+  type JobContext,
+  type JobRuntime,
+  type QueueRegistration,
+} from "@krishnadas/background-jobs";
+
+interface Notice {
+  messageId: string;
+  to: string;
+  subject: string;
+  body: string;
+}
+
+const sendNotice = defineJob<Notice, { messageId: string }>("send-notice");
+const notification = defineQueue("notification", { "send-notice": sendNotice });
 
 const jobsConfig = defineJobsConfig({
-  redis: { host: "redis" },
+  redis: { host: "127.0.0.1", port: 6379 },
   defaults: { attempts: 5, backoff: { type: "exponential", delayMs: 2000 } },
   worker: { concurrency: 8 },
 });
 
 const store = new RedisIdempotencyStore(jobsConfig);
 
+const queues: QueueRegistration[] = [
+  {
+    spec: notification,
+    handlers: {
+      "send-notice": async (ctx: JobContext<unknown>) => {
+        const notice = ctx.data as Notice;
+        return { messageId: notice.messageId };
+      },
+    },
+  },
+];
+
+@Injectable()
+export class DeskService {
+  constructor(@Inject(JOBS_RUNTIME) private readonly runtime: JobRuntime) {}
+
+  enqueue(notice: Notice) {
+    return this.runtime
+      .producer<(typeof notification)["jobs"]>("notification")
+      .add("send-notice", notice, { idempotencyKey: notice.messageId });
+  }
+}
+
 @Module({
-  imports: [JobsModule.register({ config: jobsConfig, queues: queueRegistrations(store), closables: [store] })],
+  imports: [JobsModule.register({ config: jobsConfig, queues, closables: [store] })],
+  providers: [DeskService],
 })
 export class AppModule {}
+
+const app = await NestFactory.create(AppModule);
+app.enableShutdownHooks();
+await app.listen(3000);
 ```
 
-Call `app.enableShutdownHooks()` before `listen`. On SIGTERM the module closes workers first, so the job already running can finish, then closes the queues and the idempotency client.
+Call `app.enableShutdownHooks()` before `listen`. On SIGTERM the module closes workers first, so the job already running can finish, then closes the queues and anything in `closables`.
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `redis.host` | `127.0.0.1` | Redis host |
-| `redis.port` | `6379` | Redis port |
-| `redis.password` | unset | Optional password |
-| `redis.db` | `0` | Redis database index, 0 to 15 |
-| `redis.tls` | `false` | Turn on TLS for the Redis connection |
-| `prefix` | `bg` | BullMQ key prefix. Workers that share a prefix share the queues |
-| `defaults.attempts` | `5` | How many times a job may run |
-| `defaults.backoff.type` | `exponential` | `exponential` or `fixed` |
-| `defaults.backoff.delayMs` | `2000` | Base delay. Exponential waits grow as `delayMs * 2^(attempt-1)` |
-| `defaults.removeOnComplete` | `1000` | Keep this many finished jobs. `true` drops them, `false` keeps them |
-| `defaults.removeOnFail` | `5000` | Keep this many failed jobs, so an operator can still retry one |
-| `worker.concurrency` | `5` | Jobs of one queue running at once in this process |
-| `worker.rateLimitMax` | `50` | Max jobs started per window. `0` turns the limiter off |
-| `worker.rateLimitDurationMs` | `1000` | Window for the rate limit |
-| `deadLetterQueue` | `dead-letter` | Queue that holds jobs which will not be retried automatically |
-| `health.livenessPath` | `/health/live` | Process is up |
-| `health.readinessPath` | `/health/ready` | Redis answered. `503` when it did not |
+`producer(queueName).add(name, data, options)` enqueues one job. `options.idempotencyKey` is stored as the BullMQ job id, so a second add with the same key returns the existing job. `options.delayMs` waits before the first run. `producer(queueName).schedule(name, data, { key, pattern })` registers one repeatable job. The same scheduler key updates that schedule. Queue names and job names are lowercase, up to 41 characters, and the key in `defineQueue` has to equal the job's `name`.
+
+Throw `UnrecoverableJobError` from a handler when another attempt cannot succeed. The runtime copies that job to the dead-letter queue and skips the remaining attempts. Any other thrown error, including `RetryableJobError`, uses the backoff and counts against `defaults.attempts`.
+
+`queueRegistrations(new RedisIdempotencyStore(jobsConfig))` is the same `register` call with the four sample handlers, if you want those instead of a queue you defined.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `redis.host` | `string` | `127.0.0.1` | Redis host |
+| `redis.port` | `number` | `6379` | Redis port |
+| `redis.password` | `string` or unset | unset | Optional password |
+| `redis.db` | `number` | `0` | Redis database index, 0 to 15 |
+| `redis.tls` | `boolean` | `false` | Turn on TLS for the Redis connection |
+| `prefix` | `string` | `bg` | BullMQ key prefix. Workers that share a prefix share the queues |
+| `defaults.attempts` | `number` | `5` | How many times a job may run, from 1 to 25 |
+| `defaults.backoff.type` | `"exponential" \| "fixed"` | `"exponential"` | Shape of the wait between attempts |
+| `defaults.backoff.delayMs` | `number` | `2000` | Base delay. Exponential waits grow as `delayMs * 2^(attempt-1)` |
+| `defaults.removeOnComplete` | `number \| boolean` | `1000` | Keep this many finished jobs. `true` drops them, `false` keeps them |
+| `defaults.removeOnFail` | `number \| boolean` | `5000` | Keep this many failed jobs, so an operator can still retry one |
+| `worker.concurrency` | `number` | `5` | Jobs of one queue running at once in this process |
+| `worker.rateLimitMax` | `number` | `50` | Max jobs started per window. `0` turns the limiter off |
+| `worker.rateLimitDurationMs` | `number` | `1000` | Window for the rate limit |
+| `deadLetterQueue` | `string` | `dead-letter` | Queue that holds jobs which will not be retried automatically |
+| `health.livenessPath` | `string` | `/health/live` | Process is up |
+| `health.readinessPath` | `string` | `/health/ready` | Redis answered. `503` when it did not |
 
 Environment variables: `JOBS_REDIS_HOST`, `JOBS_REDIS_PORT`, `JOBS_REDIS_PASSWORD`, `JOBS_REDIS_DB`, `JOBS_REDIS_TLS`, `JOBS_PREFIX`, `JOBS_ATTEMPTS`, `JOBS_BACKOFF_TYPE`, `JOBS_BACKOFF_DELAY_MS`, `JOBS_REMOVE_ON_COMPLETE`, `JOBS_REMOVE_ON_FAIL`, `JOBS_CONCURRENCY`, `JOBS_RATE_LIMIT_MAX`, `JOBS_RATE_LIMIT_DURATION_MS`, `JOBS_DEAD_LETTER_QUEUE`, `JOBS_LIVENESS_PATH`, `JOBS_READINESS_PATH`.
 
 The demo also reads `PORT` (default `3000`).
 
-`GET /health/live` and `GET /health/ready` come from the module. `GET /` is the desk page. `GET /api/board` is the counts, the dead letter, the failed list and the recent activity. `POST /api/demo/import`, `/notice`, `/sync`, `/digest` and `/retry` enqueue the sample jobs.
+`GET /health/live` and `GET /health/ready` come from the module. In the demo, `GET /` is the desk page, `GET /api/board` is the counts, the dead letter, the failed list and the recent activity, and `POST /api/demo/import`, `/notice`, `/sync`, `/digest` and `/retry` enqueue the sample jobs. Those HTTP routes belong to the demo, not to `JobsModule`.
 
 ## Design
 
@@ -109,6 +186,10 @@ Workers scale by process. Concurrency is how many jobs of one queue this process
 
 Shutdown closes the workers before the queues. `worker.close()` waits for the active job, so a SIGTERM during an import does not abandon the file halfway, as long as the orchestrator gives the process time to finish. Liveness only means this process can answer. Readiness pings Redis, and that is what should gate traffic. The Compose healthcheck uses liveness so the app is marked up once it can listen.
 
-## License
+## Credit / attribution
 
-Apache-2.0. See [NOTICE](../../NOTICE) at the repository root. Copyright 2026 Krishna Das.
+This module is authored by Krishna Das ([github.com/kr1shnadas](https://github.com/kr1shnadas)).
+
+Anyone who uses it must give credit to Krishna Das. That covers calling it from your own service and shipping a copy or a derivative. Keep the Apache-2.0 license header on the source files (`SPDX-License-Identifier: Apache-2.0` and `Copyright 2026 Krishna Das`). Keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) intact. Section 4(d) of the Apache License 2.0 is why the NOTICE stays: a redistribution or a derivative work has to retain that file and give visible credit to Krishna Das, in the source, in the documentation that goes with it, or on a display the work normally shows.
+
+The license remains Apache-2.0. This section does not change it.

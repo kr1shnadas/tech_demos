@@ -45,14 +45,48 @@ pnpm --filter @krishnadas/multi-tenant-iam test
 
 Stop the demo with `docker compose -f modules/multi-tenant-iam/docker-compose.yml down`.
 
-## Configuration
+## Usage
 
-`defineTenantConfig` merges overrides onto the defaults. Nested objects merge field by field, so setting `resolution.source` keeps the claim path and the header name. A `roles` override replaces the catalog. `loadTenantConfig` does the same from the environment.
+The package name is `@krishnadas/multi-tenant-iam`. It is a private workspace package, so it is not on a public registry. It depends on `@krishnadas/auth-rbac`. In another package in this repository, depend on it and install from the root:
+
+```json
+{
+  "dependencies": {
+    "@krishnadas/multi-tenant-iam": "workspace:*"
+  }
+}
+```
+
+```bash
+pnpm install
+```
+
+Node.js 20 or newer, and Postgres. The export map points at `src/index.ts`, so the project that imports it has to compile that TypeScript. The demo uses `tsx`.
+
+To use the module in a different repository, copy `modules/multi-tenant-iam` and `modules/auth-rbac`, and point the dependencies at those folders (`workspace:*` or `file:`). Keep the license header on the copied files, and keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) with the copy.
+
+Import from `@krishnadas/multi-tenant-iam`. `JwtAuthGuard` still comes from `@krishnadas/auth-rbac`. `defineTenantConfig` merges overrides onto the defaults. Nested objects merge field by field, so setting `resolution.source` keeps the claim path and the header name. A `roles` override replaces the catalog. `loadTenantConfig()` does the same from the environment, and reads a `.env` file in the working directory when one is present. Values already set in the environment win over that file.
+
+`TenantIamModule.register(config, options)` takes the tenant config and `{ auth: AuthGuardOptions, auditSink?: AuditSink, seed?: TenantSeed }`. `auth` is the same object `AuthRbacModule.register` takes (`{ config, localJwks? }`). The module imports that auth module for you. On init it calls `TenantDb.provision()`, then `seed` if you passed one. `seed` receives `{ store: TenantStore, db: TenantDb }`.
+
+Pass `auditSink` when the trail should go somewhere other than the two built-in sinks. The sink's `append` is called on the same transaction as the change. `audit.sink: "memory"` uses `MemoryAuditSink`. `"postgres"` uses `PostgresAuditSink`.
 
 ```ts
-import { Module } from "@nestjs/common";
-import { defineAuthConfig, localDemoProvider } from "@krishnadas/auth-rbac";
-import { defineTenantConfig, TenantIamModule } from "@krishnadas/multi-tenant-iam";
+import { Controller, Module, Post, UseGuards } from "@nestjs/common";
+import {
+  JwtAuthGuard,
+  defineAuthConfig,
+  localDemoProvider,
+} from "@krishnadas/auth-rbac";
+import {
+  CurrentTenant,
+  PermissionsGuard,
+  RequirePermissions,
+  TenantGuard,
+  TenantIamModule,
+  defineTenantConfig,
+  type TenantAccess,
+} from "@krishnadas/multi-tenant-iam";
 
 const tenantConfig = defineTenantConfig({
   resolution: { source: "jwt", jwtClaim: "tenant_id" },
@@ -60,47 +94,49 @@ const tenantConfig = defineTenantConfig({
   audit: { sink: "postgres" },
 });
 
+@Controller("records")
+export class RecordsController {
+  @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+  @RequirePermissions("records.write")
+  @Post()
+  create(@CurrentTenant() tenant: TenantAccess) {
+    return tenant.id;
+  }
+}
+
 @Module({
   imports: [
     TenantIamModule.register(tenantConfig, {
       auth: { config: defineAuthConfig(localDemoProvider()) },
     }),
   ],
+  controllers: [RecordsController],
 })
 export class AppModule {}
 ```
 
-On a route:
+`TenantGuard` runs after `JwtAuthGuard`. `PermissionsGuard` reads `@RequirePermissions()`. Every listed permission is required. A route with no decorator only requires a membership in the resolved tenant. `TenantAccess` is `{ id, name, role, permissions, user }`. `user` is the `AuthUser` from the auth module.
 
-```ts
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
-@RequirePermissions("records.write")
-@Post("records")
-create(@CurrentTenant() tenant: TenantAccess) {
-  return tenant.id;
-}
-```
+Inject `TenantStore` when a service needs the records, the memberships or the audit list. The store runs those queries on a connection that already has the tenant set.
 
-`JwtAuthGuard` comes from the auth module. `TenantGuard` runs after it. `PermissionsGuard` reads `@RequirePermissions()`. Every listed permission is required. A route with no decorator only requires a membership in the resolved tenant.
-
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `resolution.source` | `jwt` | `jwt`, `header` or `subdomain`. One source. It does not fall through |
-| `resolution.jwtClaim` | `tenant_id` | Dot path of the tenant claim. Used when the source is `jwt` |
-| `resolution.headerName` | `x-tenant-id` | Header name. Used when the source is `header` |
-| `resolution.baseDomain` | `localhost` | `northwind.localhost` resolves to `northwind` |
-| `isolation.mode` | `rls` | `rls` or `schema` |
-| `roles` | owner, member, reader | Catalog for a tenant with no override. Replacing it replaces the whole list |
-| `roleOverrides` | empty | A tenant id mapped to a role list. That list replaces the catalog for that tenant |
-| `audit.sink` | `postgres` | `postgres` writes the trail in the tenant scope. `memory` keeps it in the process, still split by tenant |
-| `audit.table` | `audit_events` | Table used by the Postgres sink |
-| `postgres.host` | `localhost` | Database host |
-| `postgres.port` | `5432` | Database port |
-| `postgres.user` | `iam` | Owner role. Used to migrate. Bypasses row security |
-| `postgres.password` | `iam` | Owner password. This is the local demo password |
-| `postgres.database` | `iam` | Database name |
-| `postgres.appUser` | `iam_app` | Runtime role. Not a superuser, and not allowed to bypass row security |
-| `postgres.appPassword` | `iam_app` | Runtime password. This is the local demo password |
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `resolution.source` | `"jwt" \| "header" \| "subdomain"` | `"jwt"` | Where the tenant id is read. One source. It does not fall through |
+| `resolution.jwtClaim` | `string` | `tenant_id` | Dot path of the tenant claim. Used when the source is `jwt` |
+| `resolution.headerName` | `string` | `x-tenant-id` | Header name. Used when the source is `header` |
+| `resolution.baseDomain` | `string` | `localhost` | `northwind.localhost` resolves to `northwind` |
+| `isolation.mode` | `"rls" \| "schema"` | `"rls"` | One mode for records, memberships and the audit table |
+| `roles` | `readonly TenantRole[]` | owner, member, reader | Catalog for a tenant with no override. `TenantRole` is `{ name: string, permissions: readonly string[] }`. Replacing the list replaces the whole catalog |
+| `roleOverrides` | `Readonly<Record<string, readonly TenantRole[]>>` | `{}` | A tenant id mapped to a role list. That list replaces the catalog for that tenant |
+| `audit.sink` | `"postgres" \| "memory"` | `"postgres"` | `postgres` writes the trail in the tenant scope. `memory` keeps it in the process, still split by tenant |
+| `audit.table` | `string` | `audit_events` | Table used by the Postgres sink |
+| `postgres.host` | `string` | `localhost` | Database host |
+| `postgres.port` | `number` | `5432` | Database port |
+| `postgres.user` | `string` | `iam` | Owner role. Used to migrate. Bypasses row security |
+| `postgres.password` | `string` | `iam` | Owner password. This is the local demo password |
+| `postgres.database` | `string` | `iam` | Database name |
+| `postgres.appUser` | `string` | `iam_app` | Runtime role. Not a superuser, and not allowed to bypass row security |
+| `postgres.appPassword` | `string` | `iam_app` | Runtime password. This is the local demo password |
 
 The default catalog:
 
@@ -111,8 +147,6 @@ The default catalog:
 | `reader` | `records.read`, `audit.read` |
 
 Environment variables: `TENANT_SOURCE`, `TENANT_JWT_CLAIM`, `TENANT_HEADER`, `TENANT_BASE_DOMAIN`, `TENANT_ISOLATION`, `TENANT_ROLES` (JSON array), `TENANT_ROLE_OVERRIDES` (JSON object), `AUDIT_SINK`, `AUDIT_TABLE`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`, `POSTGRES_APP_USER`, `POSTGRES_APP_PASSWORD`. `PORT` selects the API port and defaults to 3000.
-
-Pass `auditSink` to `TenantIamModule.register` when the trail should go somewhere other than the two built-in sinks. The sink's `append` is called on the same transaction as the change.
 
 ## Design
 
@@ -132,6 +166,10 @@ I would not mix the two. `isolation.mode` picks one for the records, the members
 
 The audit row is inserted on the same transaction as the record. Roll the record back and the trail rolls back with it. The Postgres sink selects with no tenant predicate, same as the record list. The memory sink is there for a process that has no database trail yet. It still partitions by tenant id. It will not survive a restart, and it is not a substitute for the policy.
 
-## License
+## Credit / attribution
 
-Apache-2.0. See [NOTICE](../../NOTICE) at the repository root. Copyright 2026 Krishna Das.
+This module is authored by Krishna Das ([github.com/kr1shnadas](https://github.com/kr1shnadas)).
+
+Anyone who uses it must give credit to Krishna Das. That covers calling it from your own service and shipping a copy or a derivative. Keep the Apache-2.0 license header on the source files (`SPDX-License-Identifier: Apache-2.0` and `Copyright 2026 Krishna Das`). Keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) intact. Section 4(d) of the Apache License 2.0 is why the NOTICE stays: a redistribution or a derivative work has to retain that file and give visible credit to Krishna Das, in the source, in the documentation that goes with it, or on a display the work normally shows.
+
+The license remains Apache-2.0. This section does not change it.

@@ -53,56 +53,96 @@ The integration tests start their own Postgres and a KRaft broker. They do not u
 
 Stop the demo with `docker compose down` from this directory.
 
-## Configuration
+## Usage
 
-`defineKafkaConfig` merges overrides onto the defaults. Nested objects merge field by field, so setting `retry.backoffMs` keeps the other retry fields. `loadKafkaConfig` does the same from the environment.
+The package name is `@krishnadas/kafka-event-stream`. It is a private workspace package, so it is not on a public registry. In another package in this repository, depend on it and install from the root:
+
+```json
+{
+  "dependencies": {
+    "@krishnadas/kafka-event-stream": "workspace:*"
+  }
+}
+```
+
+```bash
+pnpm install
+```
+
+Node.js 20 or newer, plus Postgres and a Kafka broker. The export map points at `src/index.ts`, so the project that imports it has to compile that TypeScript. The demo uses `tsx`.
+
+To use the module in a different repository, copy `modules/kafka-event-stream` and point the dependency at that folder (`workspace:*` or `file:`). Keep the license header on the copied files, and keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) with the copy.
+
+Import from `@krishnadas/kafka-event-stream`. `defineKafkaConfig` merges overrides onto the defaults. Nested objects merge field by field, so setting `retry.backoffMs` keeps the other retry fields. `loadKafkaConfig()` does the same from the environment, and reads a `.env` file in the working directory when one is present. Values already set in the environment win over that file.
+
+`KafkaStreamModule.register(config)` starts the pool, the producer, the consumer and the outbox relay when the Nest module initializes, and stops them on destroy. Inject `ProducerService` to write an outbox row. Inject `ConsumerService` for `status()` and `replay({ offset, partition, limit })`. `offset` is a decimal string. `partition` and `limit` are optional.
+
+`ProducerService.enqueue` opens its own transaction and inserts only the outbox row. When the event has to commit with a business write, call `enqueueInTransaction(client, config, input)` on that same `PoolClient` instead. A rollback then drops the outbox row with the business row.
 
 ```ts
-import { Module } from "@nestjs/common";
-import { defineKafkaConfig, KafkaStreamModule } from "@krishnadas/kafka-event-stream";
+import { Inject, Injectable, Module } from "@nestjs/common";
+import {
+  KafkaStreamModule,
+  ProducerService,
+  defineKafkaConfig,
+} from "@krishnadas/kafka-event-stream";
 
-export const streamConfig = defineKafkaConfig({
+const streamConfig = defineKafkaConfig({
   brokers: ["localhost:9092"],
   consumerGroup: "study-ingestion",
   retry: { maxAttempts: 3, backoffMs: 1000, multiplier: 2 },
 });
 
+@Injectable()
+export class IngestionService {
+  constructor(@Inject(ProducerService) private readonly producer: ProducerService) {}
+
+  accept(batchId: string) {
+    return this.producer.enqueue({
+      partitionKey: batchId,
+      eventType: "ingestion.accepted",
+      payload: { batchId },
+    });
+  }
+}
+
 @Module({
   imports: [KafkaStreamModule.register(streamConfig)],
+  providers: [IngestionService],
 })
 export class AppModule {}
 ```
 
-Inside that module, `ProducerService.enqueue` writes the outbox row. `ConsumerService` subscribes to the events topic and the retry topics.
+`EnqueueInput` is `{ partitionKey: string, eventType: string, payload: Record<string, unknown>, eventId?: string }`. `eventId` defaults to a new UUID. The partition key becomes the Kafka message key. I use the batch id.
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `brokers` | `localhost:9092` | Bootstrap servers |
-| `clientId` | `kafka-event-stream` | Kafka client id |
-| `consumerGroup` | `study-ingestion` | Group that commits offsets on the events topic |
-| `topics.events` | `study.ingestion` | Topic the relay publishes to |
-| `topics.retryPrefix` | `study.ingestion.retry` | Failed attempt *n* is published to `{prefix}.{n}` |
-| `topics.deadLetter` | `study.ingestion.dlt` | Topic for a record that has used its attempts |
-| `partitions` | `3` | Partitions on the events topic, each retry topic and the dead-letter topic |
-| `retry.maxAttempts` | `3` | Attempts including the first delivery. The last failure is dead-lettered |
-| `retry.backoffMs` | `1000` | Wait after the first failure |
-| `retry.multiplier` | `2` | Each later failure multiplies the wait |
-| `idempotency.table` | `processed_events` | Table of event ids this group has finished |
-| `idempotency.ttlSeconds` | `86400` | After this, a redelivery can be applied again |
-| `outbox.table` | `outbox` | Table the relay reads |
-| `outbox.pollIntervalMs` | `500` | How often the relay looks for unpublished rows |
-| `outbox.batchSize` | `50` | Rows published in one poll |
-| `postgres.host` | `localhost` | Database host |
-| `postgres.port` | `5432` | Database port |
-| `postgres.user` | `events` | Database user |
-| `postgres.password` | `events` | Database password. This is the local demo password |
-| `postgres.database` | `events` | Database name |
+The consumer is `handleRecord`. It does not take a handler you register. A record with `payload.poison === true`, or the event type `ingestion.poison`, is retried and then written to the dead-letter topic. Every other record is inserted into `applied_events` once for that event id and consumer group.
 
-Environment variables use the same names: `KAFKA_BROKERS` (comma-separated), `KAFKA_CLIENT_ID`, `KAFKA_CONSUMER_GROUP`, `KAFKA_TOPIC_EVENTS`, `KAFKA_TOPIC_RETRY_PREFIX`, `KAFKA_TOPIC_DEAD_LETTER`, `KAFKA_PARTITIONS`, `KAFKA_RETRY_MAX_ATTEMPTS`, `KAFKA_RETRY_BACKOFF_MS`, `KAFKA_RETRY_MULTIPLIER`, `KAFKA_IDEMPOTENCY_TABLE`, `KAFKA_IDEMPOTENCY_TTL_SECONDS`, `KAFKA_OUTBOX_TABLE`, `KAFKA_OUTBOX_POLL_MS`, `KAFKA_OUTBOX_BATCH_SIZE`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`.
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `brokers` | `readonly string[]` | `["localhost:9092"]` | Bootstrap servers, each `host:port` |
+| `clientId` | `string` | `kafka-event-stream` | Kafka client id |
+| `consumerGroup` | `string` | `study-ingestion` | Group that commits offsets on the events topic |
+| `topics.events` | `string` | `study.ingestion` | Topic the relay publishes to |
+| `topics.retryPrefix` | `string` | `study.ingestion.retry` | Failed attempt *n* is published to `{prefix}.{n}` |
+| `topics.deadLetter` | `string` | `study.ingestion.dlt` | Topic for a record that has used its attempts |
+| `partitions` | `number` | `3` | Partitions on the events topic, each retry topic and the dead-letter topic |
+| `retry.maxAttempts` | `number` | `3` | Attempts including the first delivery. The last failure is dead-lettered |
+| `retry.backoffMs` | `number` | `1000` | Wait after the first failure |
+| `retry.multiplier` | `number` | `2` | Each later failure multiplies the wait |
+| `idempotency.table` | `string` | `processed_events` | Table of event ids this group has finished |
+| `idempotency.ttlSeconds` | `number` | `86400` | After this, a redelivery can be applied again |
+| `outbox.table` | `string` | `outbox` | Table the relay reads |
+| `outbox.pollIntervalMs` | `number` | `500` | How often the relay looks for unpublished rows |
+| `outbox.batchSize` | `number` | `50` | Rows published in one poll |
+| `postgres.host` | `string` | `localhost` | Database host |
+| `postgres.port` | `number` | `5432` | Database port |
+| `postgres.user` | `string` | `events` | Database user |
+| `postgres.password` | `string` | `events` | Database password. This is the local demo password |
+| `postgres.database` | `string` | `events` | Database name |
+
+Environment variables: `KAFKA_BROKERS` (comma-separated), `KAFKA_CLIENT_ID`, `KAFKA_CONSUMER_GROUP`, `KAFKA_TOPIC_EVENTS`, `KAFKA_TOPIC_RETRY_PREFIX`, `KAFKA_TOPIC_DEAD_LETTER`, `KAFKA_PARTITIONS`, `KAFKA_RETRY_MAX_ATTEMPTS`, `KAFKA_RETRY_BACKOFF_MS`, `KAFKA_RETRY_MULTIPLIER`, `KAFKA_IDEMPOTENCY_TABLE`, `KAFKA_IDEMPOTENCY_TTL_SECONDS`, `KAFKA_OUTBOX_TABLE`, `KAFKA_OUTBOX_POLL_MS`, `KAFKA_OUTBOX_BATCH_SIZE`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`.
 
 The Compose file sets `KAFKA_RETRY_BACKOFF_MS=400` so a poison event reaches the dead-letter queue while you are still looking at the page. The code default stays at one second.
-
-`enqueue` takes a partition key, an event type and a payload. The partition key becomes the Kafka message key. I use the batch id. A payload with `poison: true`, or the event type `ingestion.poison`, is the failure the demo consumer retries.
 
 ## Design
 
@@ -116,6 +156,10 @@ With `maxAttempts` of 3 the record is tried on the events topic, then `retryPref
 
 Replay does not move the group offset. It starts a second consumer from the beginning of the partition and runs the same handler for every record at or after the offset you pass. Records before that offset are left alone. `POST /api/replay` with `{ "offset": "0", "partition": 0 }` is what the button calls. Finished ids come back as duplicates, which is what I want when I am checking a stretch of the log. To apply one again I delete its idempotency row first. The offset is per partition. Partition 0 offset 0 is the start of that partition, not a global position across the topic.
 
-## License
+## Credit / attribution
 
-Apache-2.0. See [NOTICE](../../NOTICE) at the repository root. Copyright 2026 Krishna Das.
+This module is authored by Krishna Das ([github.com/kr1shnadas](https://github.com/kr1shnadas)).
+
+Anyone who uses it must give credit to Krishna Das. That covers calling it from your own service and shipping a copy or a derivative. Keep the Apache-2.0 license header on the source files (`SPDX-License-Identifier: Apache-2.0` and `Copyright 2026 Krishna Das`). Keep the repository [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE) intact. Section 4(d) of the Apache License 2.0 is why the NOTICE stays: a redistribution or a derivative work has to retain that file and give visible credit to Krishna Das, in the source, in the documentation that goes with it, or on a display the work normally shows.
+
+The license remains Apache-2.0. This section does not change it.
