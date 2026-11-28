@@ -1,0 +1,214 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Krishna Das
+# See NOTICE at the repository root.
+
+# A NestJS CRUD workflow. Inception turns an intent into units of work.
+# Construction designs the type and writes the module and a test.
+# Operations reviews the files. Startup stops for a person after the first two phases.
+# Regulated stops after every phase, including operations.
+
+profile: startup
+outputRoot: output
+provider:
+  kind: mock
+  modelId: mock-deterministic
+  baseUrl: http://127.0.0.1:8080/v1
+  apiKeyEnv: DLC_PROVIDER_API_KEY
+  timeoutMs: 30000
+health:
+  livenessPath: /health/live
+  readinessPath: /health/ready
+profiles:
+  regulated:
+    description: Audit every step and require a person to approve each phase.
+    auditLogging: true
+    approval: every-phase
+  startup:
+    description: Keep an audit log and stop only where the workflow asks for a person.
+    auditLogging: true
+    approval: as-configured
+skills:
+  - name: requirements-to-stories
+    description: Turn an intent into units of work.
+    whenToUse: At the start, when the intent still needs a list of units of work.
+    inputSchema:
+      type: object
+      required: [intent, prior]
+      properties:
+        intent:
+          type: string
+        prior:
+          type: object
+    outputSchema:
+      type: object
+      required: [entity, units]
+      properties:
+        entity:
+          type: string
+        units:
+          type: array
+    promptTemplate: |
+      Split the intent into units of work.
+      Intent:
+      {{intent}}
+      Prior:
+      {{prior}}
+    allowedTools: []
+  - name: domain-model
+    description: Describe the type, its fields and the resource name.
+    whenToUse: After the units of work exist and before any files are written.
+    inputSchema:
+      type: object
+      required: [intent, prior]
+      properties:
+        intent:
+          type: string
+        prior:
+          type: object
+    outputSchema:
+      type: object
+      required: [entity, plural, resource, fields]
+      properties:
+        entity:
+          type: string
+        plural:
+          type: string
+        resource:
+          type: string
+        fields:
+          type: array
+    promptTemplate: |
+      Describe the domain for this intent.
+      Intent:
+      {{intent}}
+      Prior:
+      {{prior}}
+    allowedTools: []
+  - name: generate-nest-module
+    description: Write a NestJS module, controller, service and dto for the domain.
+    whenToUse: When the domain is agreed and the service files should be written.
+    inputSchema:
+      type: object
+      required: [intent, prior]
+      properties:
+        intent:
+          type: string
+        prior:
+          type: object
+    outputSchema:
+      type: object
+      required: [entity, files]
+      properties:
+        entity:
+          type: string
+        files:
+          type: array
+    promptTemplate: |
+      Write the NestJS module for this intent.
+      Intent:
+      {{intent}}
+      Prior:
+      {{prior}}
+    allowedTools: [write_file]
+  - name: generate-tests
+    description: Write a service test next to the module.
+    whenToUse: After the module files exist.
+    inputSchema:
+      type: object
+      required: [intent, prior]
+      properties:
+        intent:
+          type: string
+        prior:
+          type: object
+    outputSchema:
+      type: object
+      required: [entity, files]
+      properties:
+        entity:
+          type: string
+        files:
+          type: array
+    promptTemplate: |
+      Write a service test for this intent.
+      Intent:
+      {{intent}}
+      Prior:
+      {{prior}}
+    allowedTools: [write_file]
+  - name: review-diff
+    description: List the written files and record a review note.
+    whenToUse: Before the work is treated as ready to ship.
+    inputSchema:
+      type: object
+      required: [intent, prior]
+      properties:
+        intent:
+          type: string
+        prior:
+          type: object
+    outputSchema:
+      type: object
+      required: [verdict, files]
+      properties:
+        verdict:
+          type: string
+        files:
+          type: array
+        notes:
+          type: array
+    promptTemplate: |
+      Review the files written for this intent.
+      Intent:
+      {{intent}}
+      Prior:
+      {{prior}}
+    allowedTools: [write_file, list_files]
+agents:
+  - name: analyst
+    role: Analyst
+    provider: mock
+    modelId: mock-deterministic
+    systemPrompt: You turn an intent into units of work. You do not write service files.
+    skills: [requirements-to-stories]
+    guardrails:
+      allowedPaths: [docs]
+      maxTokens: 2048
+      maxSteps: 4
+  - name: builder
+    role: Builder
+    provider: mock
+    modelId: mock-deterministic
+    systemPrompt: You design the type and write the NestJS module and its test inside the sandbox.
+    skills: [domain-model, generate-nest-module, generate-tests]
+    guardrails:
+      allowedPaths: [src, test]
+      maxTokens: 8192
+      maxSteps: 24
+  - name: reviewer
+    role: Reviewer
+    provider: mock
+    modelId: mock-deterministic
+    systemPrompt: You list the files in the sandbox and write a short review. You do not change service code.
+    skills: [review-diff]
+    guardrails:
+      allowedPaths: [docs]
+      maxTokens: 2048
+      maxSteps: 8
+workflows:
+  - name: nestjs-crud
+    description: Inception, construction and operations for a NestJS CRUD service.
+    outputDir: nestjs-crud
+    phases:
+      - phase: inception
+        agent: analyst
+        skills: [requirements-to-stories]
+        approvalGate: true
+      - phase: construction
+        agent: builder
+        skills: [domain-model, generate-nest-module, generate-tests]
+        approvalGate: true
+      - phase: operations
+        agent: reviewer
+        skills: [review-diff]
+        approvalGate: false
