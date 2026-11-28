@@ -14,6 +14,7 @@ I add modules over time as I extract and polish patterns from real projects, so 
 - [Background jobs](modules/background-jobs/) — BullMQ queue, retries, dead-letter handling and a small status page
 - [Observability](modules/observability/) — traces, structured logs and Prometheus metrics for NestJS services
 - [Multi-tenant IAM](modules/multi-tenant-iam/) — tenant resolution, Postgres row-level security, per-tenant roles and an audit trail
+- [Configurable dev lifecycle kit](modules/ai-dlc-agents/) — skills, roles and phased workflows with approval gates and audit log
 
 ## Planned modules
 
